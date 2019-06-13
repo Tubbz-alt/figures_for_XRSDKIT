@@ -2,17 +2,23 @@ import matplotlib.pyplot as plt
 import sklearn
 from sklearn.metrics import confusion_matrix
 import numpy as np
+import itertools
 
 from xrsdkit import definitions as xrsdefs
 
 import xrsdkit
-from xrsdkit.models import load_models, get_regression_models 
+from xrsdkit.models import load_models, get_regression_models, get_classification_models
 load_models('../xrsdkit_modeling/flowreactor_pd_nanoparticles/models')
 from xrsdkit.models.predict import system_from_prediction, predict
 
 from xrsdkit.tools.profiler import profile_keys
+from xrsdkit.tools.visualization_tools import doPCA
 
 regression_models = get_regression_models()
+classification_models = get_classification_models()
+
+
+
 
 #by https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html
 def plot_confusion_matrix(y_true, y_pred, classes,
@@ -185,3 +191,201 @@ def get_true_predicted_crossvalid(sys_cls, data):
                                 s_d = model.standardize(stg_label_data, features)
                                 results[name]['predicted'] = model.model.predict(s_d[model.features])                  
     return results
+
+def get_true_xvalid_binary_cls(data):
+    u_f = []
+    features = profile_keys
+    results = {}
+    all_sys_cls = data['system_class'].tolist()
+    data_copy = data.copy()
+
+    for struct_nm in xrsdefs.structure_names:
+        model_id = struct_nm+'_binary'
+        labels = [struct_nm in sys_cls for sys_cls in all_sys_cls]
+        data_copy.loc[:,model_id] = labels
+
+        if ('main_classifiers' in classification_models) \
+        and (model_id in classification_models['main_classifiers']) \
+        and (classification_models['main_classifiers'][model_id].trained):
+            model = classification_models['main_classifiers'][model_id] 
+            u_f.extend(model.features)
+            name = model_id            
+            results[name] = {}
+            
+            pca = doPCA(model.scaler.transform(data_copy[model.features]),2)
+            transformed_data = pca.transform(model.scaler.transform(data_copy[model.features]))
+            results[name]['pca1'] = transformed_data[ : , 0]
+            results[name]['pca2'] = transformed_data[ : , 1]
+            
+            results[name]['true_y'] = labels
+            group_ids, _ = model.group_by_pc1(data_copy,features)
+            data_copy['group_id'] = group_ids
+            results[name]['cross_val'] =  model.run_cross_validation(data_copy).to_list()
+            
+            r = []
+            for i in range(len(labels)):
+                y_t = labels[i]
+                y_p = results[name]['cross_val'][i]
+                if y_t== True and y_p== True:
+                    r.append(0)#('true_positive')
+                elif y_t==False and y_p == False:
+                    r.append(1)#('true_negative')
+                elif y_t == True and y_p == False:
+                    r.append(2)#('false_negative')
+                else:
+                    r.append(3)#('false_positive')
+            results[name]['compared'] = r
+    return results, u_f 
+
+def get_true_xvalid_multiclass_cls(data):
+    features = profile_keys
+    results = {}
+    u_f = []
+    all_sys_cls = data['system_class'].tolist()
+           
+    all_flag_combs = itertools.product([True,False],repeat=len(xrsdefs.structure_names))
+    for flags in all_flag_combs:
+        if sum(flags) > 0:
+            flag_idx = np.ones(data.shape[0],dtype=bool)
+            model_id = ''
+            for struct_nm, flag in zip(xrsdefs.structure_names,flags):
+                struct_flag_idx = np.array([(struct_nm in sys_cls) == flag for sys_cls in all_sys_cls])
+                flag_idx = flag_idx & struct_flag_idx
+                if flag:
+                    if model_id: model_id += '__'
+                    model_id += struct_nm
+            # get all samples whose system_class matches the flags
+            flag_data = data.loc[flag_idx,:].copy()
+            if flag_data.shape[0] > 0: # we have data with these structure flags in the training set
+                if ('main_classifiers' in classification_models) \
+                and (model_id in classification_models['main_classifiers']) \
+                and (classification_models['main_classifiers'][model_id].trained):
+                    model = classification_models['main_classifiers'][model_id]
+                    u_f.extend(model.features)
+                    name = model_id            
+                    results[name] = {}
+
+                    pca = doPCA(model.scaler.transform(flag_data[model.features]),2)
+                    transformed_data = pca.transform(model.scaler.transform(flag_data[model.features]))
+                    results[name]['pca1'] = transformed_data[ : , 0]
+                    results[name]['pca2'] = transformed_data[ : , 1]
+                    labels = flag_data[model.target].copy().to_list()
+                    results[name]['true_y'] = labels
+                    group_ids, _ = model.group_by_pc1(flag_data,features)
+                    flag_data['group_id'] = group_ids
+                    results[name]['cross_val'] =  model.run_cross_validation(flag_data).to_list()         
+
+                    r = []
+                    for i in range(len(results[name]['true_y'])):
+                        y_t = results[name]['true_y'][i]
+                        y_p = results[name]['cross_val'][i]
+                        if y_t == y_p:
+                            r.append(0)
+                        else:
+                            r.append(1)
+                    results[name]['compared'] = r
+                    
+    sys_cls_labels = list(data['system_class'].unique())
+    # 'unidentified' systems will have no sub-classifiers; drop this label up front 
+    if 'unidentified' in sys_cls_labels: sys_cls_labels.remove('unidentified')
+
+    for sys_cls in sys_cls_labels:
+        sys_cls_data = data.loc[data['system_class']==sys_cls].copy()
+        if (sys_cls in classification_models) \
+        and ('noise_model' in classification_models[sys_cls]) \
+        and (classification_models[sys_cls]['noise_model'].trained):
+            model = classification_models[sys_cls]['noise_model']
+            u_f.extend(model.features)
+            name = 'noise_model'            
+            results[name] = {}
+
+            pca = doPCA(model.scaler.transform(sys_cls_data[model.features]),2)
+            transformed_data = pca.transform(model.scaler.transform(sys_cls_data[model.features]))
+            results[name]['pca1'] = transformed_data[ : , 0]
+            results[name]['pca2'] = transformed_data[ : , 1]
+            labels = flag_data[model.target].copy().to_list()
+            results[name]['true_y'] = labels
+            group_ids, _ = model.group_by_pc1(sys_cls_data,features)
+            sys_cls_data['group_id'] = group_ids
+            results[name]['cross_val'] =  model.run_cross_validation(sys_cls_data).to_list()         
+
+            r = []
+            for i in range(len(results[name]['true_y'])):
+                y_t = results[name]['true_y'][i]
+                y_p = results[name]['cross_val'][i]
+                if y_t == y_p:
+                    r.append(0)
+                else:
+                    r.append(1)
+            results[name]['compared'] = r
+            
+        # each population has some classifiers for form factor and settings
+        for ipop, struct in enumerate(sys_cls.split('__')):
+            pop_id = 'pop{}'.format(ipop)
+
+            # every population must have a form classifier
+            form_header = pop_id+'_form'
+            if (sys_cls in classification_models) \
+            and (pop_id in classification_models[sys_cls]) \
+            and ('form' in classification_models[sys_cls][pop_id]) \
+            and (classification_models[sys_cls][pop_id]['form'].trained):
+                model = classification_models[sys_cls][pop_id]['form']
+                u_f.extend(model.features)
+                name = pop_id          
+                results[name] = {}
+
+                pca = doPCA(model.scaler.transform(sys_cls_data[model.features]),2)
+                transformed_data = pca.transform(model.scaler.transform(sys_cls_data[model.features]))
+                results[name]['pca1'] = transformed_data[ : , 0]
+                results[name]['pca2'] = transformed_data[ : , 1]
+                labels = sys_cls_data[model.target].copy().to_list()
+                results[name]['true_y'] = labels
+                group_ids, _ = model.group_by_pc1(sys_cls_data,features)
+                sys_cls_data['group_id'] = group_ids
+                results[name]['cross_val'] =  model.run_cross_validation(sys_cls_data).to_list()         
+
+                r = []
+                for i in range(len(results[name]['true_y'])):
+                    y_t = results[name]['true_y'][i]
+                    y_p = results[name]['cross_val'][i]
+                    if y_t == y_p:
+                        r.append(0)
+                    else:
+                        r.append(1)
+                results[name]['compared'] = r
+
+            # add classifiers for any model-able structure settings 
+            for stg_nm in xrsdefs.modelable_structure_settings[struct]:
+                stg_header = pop_id+'_'+stg_nm
+                if (sys_cls in classification_models) \
+                and (pop_id in classification_models[sys_cls]) \
+                and (stg_nm in classification_models[sys_cls][pop_id]) \
+                and (classification_models[sys_cls][pop_id][stg_nm].trained):
+                    model = classification_models[sys_cls][pop_id][stg_nm]
+                    u_f.extend(model.features)
+                    name = stg_header      
+                    results[name] = {}
+
+                    pca = doPCA(model.scaler.transform(sys_cls_data[model.features]),2)
+                    transformed_data = pca.transform(model.scaler.transform(sys_cls_data[model.features]))
+                    results[name]['pca1'] = transformed_data[ : , 0]
+                    results[name]['pca2'] = transformed_data[ : , 1]
+                    labels = flag_data[model.target].copy().to_list()
+                    results[name]['true_y'] = labels
+                    group_ids, _ = model.group_by_pc1(flag_data,features)
+                    sys_cls_data['group_id'] = group_ids
+                    results[name]['cross_val'] =  model.run_cross_validation(sys_cls_data).to_list()         
+
+                    r = []
+                    for i in range(len(results[name]['true_y'])):
+                        y_t = results[name]['true_y'][i]
+                        y_p = results[name]['cross_val'][i]
+                        if y_t == y_p:
+                            r.append(0)
+                        else:
+                            r.append(1)
+                    results[name]['compared'] = r
+
+
+
+    return results, u_f
