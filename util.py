@@ -68,6 +68,7 @@ def plot_confusion_matrix(y_true, y_pred, classes,
     return ax
 
 def get_true_predicted_crossvalid(sys_cls, data):
+    regression_models = get_regression_models()
     features = profile_keys
     results = {}
     sys_cls_data = data.loc[data['system_class']==sys_cls].copy()
@@ -86,13 +87,8 @@ def get_true_predicted_crossvalid(sys_cls, data):
                         name = sys_cls + "_noise_"  + modnm 
                         
                         results[name] = {}
-                        results[name]['true_y'] = noise_model_data[model.target]
-                        group_ids, _ = model.group_by_pc1(noise_model_data,features)
-                        noise_model_data['group_id'] = group_ids
-                        results[name]['cross_val'] =  model.run_cross_validation(noise_model_data)
-                        
-                        s_d = model.standardize(noise_model_data, features)
-                        results[name]['predicted'] =  model.model.predict(s_d[model.features])
+                        results[name]['true_y'],results[name]['predicted'],results[name]['cross_val'] = model.train(noise_model_data)
+                                
             # use the sys_cls to identify the populations and their structures
     for ipop,struct in enumerate(sys_cls.split('__')):
         pop_id = 'pop{}'.format(ipop)
@@ -106,13 +102,7 @@ def get_true_predicted_crossvalid(sys_cls, data):
             name = sys_cls + "_I0_fraction_" + pop_id 
                         
             results[name] = {}
-            results[name]['true_y'] = sys_cls_data[model.target]
-            group_ids, _ = model.group_by_pc1(sys_cls_data,features)
-            sys_cls_data['group_id'] = group_ids
-            results[name]['cross_val'] =  model.run_cross_validation(sys_cls_data)
-                        
-            s_d = model.standardize(sys_cls_data, features)
-            results[name]['predicted'] = model.model.predict(s_d[model.features])
+            results[name]['true_y'],results[name]['predicted'],results[name]['cross_val'] = model.train(sys_cls_data)
             
         # add regressors for any modelable structure params 
         for stg_nm in xrsdefs.modelable_structure_settings[struct]:
@@ -132,13 +122,7 @@ def get_true_predicted_crossvalid(sys_cls, data):
                             name = sys_cls + "_" + stg_nm + "_" + stg_label + "_" + pnm
                         
                             results[name] = {}
-                            results[name]['true_y'] = stg_label_data[model.target]
-                            group_ids, _ = model.group_by_pc1(stg_label_data,features)
-                            stg_label_data['group_id'] = group_ids
-                            results[name]['cross_val'] =  model.run_cross_validation(stg_label_data)
-                
-                            s_d = model.standardize(stg_label_data, features)
-                            results[name]['predicted'] = model.model.predict(s_d[model.features])
+                            results[name]['true_y'],results[name]['predicted'],results[name]['cross_val'] = model.train(stg_label_data)
                             
         # get all unique form factors for this population
         form_header = pop_id+'_form'
@@ -157,13 +141,7 @@ def get_true_predicted_crossvalid(sys_cls, data):
                         model = regression_models[sys_cls][pop_id][form_id][pnm]
                         name = sys_cls + "_" + form_header + "_" + form_id + "_" + pnm
                         results[name] = {}
-                        results[name]['true_y'] = form_data[model.target]
-                        group_ids, _ = model.group_by_pc1(form_data,features)
-                        form_data['group_id'] = group_ids
-                        results[name]['cross_val'] =  model.run_cross_validation(form_data)
-                        
-                        s_d = model.standardize(form_data, features)
-                        results[name]['predicted'] =  model.model.predict(s_d[model.features])
+                        results[name]['true_y'],results[name]['predicted'],results[name]['cross_val'] = model.train(form_data)
                         
                 # add regressors for any modelable form factor params 
                 for stg_nm in xrsdefs.modelable_form_factor_settings[form_id]:
@@ -183,16 +161,12 @@ def get_true_predicted_crossvalid(sys_cls, data):
                                 model = regression_models[sys_cls][pop_id][form_id][stg_nm][stg_label][pnm]
                                 name = sys_cls + "_" + form_header + "_" + form_id + "_" + stg_nm + '_' + stg_label + "_" + pnm
                                 results[name] = {}
-                                results[name]['true_y'] = stg_label_data[model.target]
-                                group_ids, _ = model.group_by_pc1(stg_label_data,features)
-                                stg_label_data['group_id'] = group_ids
-                                results[name]['cross_val'] =  model.run_cross_validation(stg_label_data)
-                        
-                                s_d = model.standardize(stg_label_data, features)
-                                results[name]['predicted'] = model.model.predict(s_d[model.features])                  
+                                results[name]['true_y'],results[name]['predicted'],results[name]['cross_val'] = model.train(stg_label_data)
+                                
     return results
 
 def get_true_xvalid_binary_cls(data):
+    classification_models = get_classification_models()
     u_f = []
     features = profile_keys
     results = {}
@@ -238,6 +212,7 @@ def get_true_xvalid_binary_cls(data):
     return results, u_f 
 
 def get_true_xvalid_multiclass_cls(data):
+    classification_models = get_classification_models()
     features = profile_keys
     results = {}
     u_f = []
