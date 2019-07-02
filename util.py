@@ -8,7 +8,9 @@ from xrsdkit import definitions as xrsdefs
 
 import xrsdkit
 from xrsdkit.models import load_models, get_regression_models, get_classification_models
-load_models('../xrsdkit_modeling/flowreactor_pd_nanoparticles/models')
+#load_models('../xrsdkit_modeling/flowreactor_pd_nanoparticles/models')
+#load_models('../xrsdkit_modeling/xrsdkit_models')
+load_models('../xrsdkit_modeling/models_all_data')
 from xrsdkit.models.predict import system_from_prediction, predict
 
 from xrsdkit.tools.profiler import profile_keys
@@ -237,7 +239,7 @@ def get_true_xvalid_multiclass_cls(data):
                 and (classification_models['main_classifiers'][model_id].trained):
                     model = classification_models['main_classifiers'][model_id]
                     u_f.extend(model.features)
-                    name = model_id            
+                    name = model_id 
                     results[name] = {}
 
                     pca = doPCA(model.scaler.transform(flag_data[model.features]),2)
@@ -306,7 +308,7 @@ def get_true_xvalid_multiclass_cls(data):
             and (classification_models[sys_cls][pop_id]['form'].trained):
                 model = classification_models[sys_cls][pop_id]['form']
                 u_f.extend(model.features)
-                name = pop_id          
+                name = form_header #pop_id          
                 results[name] = {}
 
                 pca = doPCA(model.scaler.transform(sys_cls_data[model.features]),2)
@@ -349,17 +351,20 @@ def get_true_xvalid_multiclass_cls(data):
                     results[name]['true_y'] = labels
                     group_ids, _ = model.group_by_pc1(flag_data,features)
                     sys_cls_data['group_id'] = group_ids
-                    results[name]['cross_val'] =  model.run_cross_validation(sys_cls_data).to_list()         
-
-                    r = []
-                    for i in range(len(results[name]['true_y'])):
-                        y_t = results[name]['true_y'][i]
-                        y_p = results[name]['cross_val'][i]
-                        if y_t == y_p:
-                            r.append(0)
-                        else:
-                            r.append(1)
-                    results[name]['compared'] = r
+                    sys_cls_data = sys_cls_data.dropna(subset = ['group_id'])
+                    if len(sys_cls_data) > 0:
+                        results[name]['cross_val'] =  model.run_cross_validation(sys_cls_data).to_list()         
+                        r = []
+                        for i in range(len(results[name]['true_y'])):
+                            y_t = results[name]['true_y'][i]
+                            y_p = results[name]['cross_val'][i]
+                            if y_t == y_p:
+                                r.append(0)
+                            else:
+                                r.append(1)
+                        results[name]['compared'] = r
+                    else:
+                        del results[name]
 
 
 
