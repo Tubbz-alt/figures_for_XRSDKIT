@@ -10,7 +10,7 @@ import xrsdkit
 from xrsdkit.models import load_models, get_regression_models, get_classification_models
 #load_models('../xrsdkit_modeling/flowreactor_pd_nanoparticles/models')
 #load_models('../xrsdkit_modeling/xrsdkit_models')
-load_models('../xrsdkit_modeling/models_all_data')
+load_models('../xrsdkit_modeling/models_batch_and_flow_reactor_data')
 from xrsdkit.models.predict import system_from_prediction, predict
 
 from xrsdkit.tools.profiler import profile_keys
